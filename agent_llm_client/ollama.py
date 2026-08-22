@@ -50,7 +50,7 @@ class OllamaClient(BaseLLMClient):
             print(f"❌ [Ollama Error]: {str(e)}")
             return "{}", {}
 
-    def get_embeddings(self, text):
+    def get_embeddings(self, text) -> List[float]:
         url = f"{self.host}/api/embeddings"
         payload = {"model": self.embed_model, "prompt": text}
         data = json.dumps(payload).encode("utf-8")
