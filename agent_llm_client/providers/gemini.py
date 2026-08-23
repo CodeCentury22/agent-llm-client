@@ -3,7 +3,7 @@ import time
 import re
 import asyncio
 from typing import List, Dict, Any, Tuple
-from .base import BaseLLMClient
+from ..base import BaseLLMClient
 
 class GemeniClient(BaseLLMClient):
 

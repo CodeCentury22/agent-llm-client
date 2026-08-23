@@ -3,7 +3,7 @@ import re
 import urllib.request
 import asyncio
 from typing import List, Dict, Any, Tuple
-from .base import BaseLLMClient
+from ..base import BaseLLMClient
 
 class OllamaClient(BaseLLMClient):
 
