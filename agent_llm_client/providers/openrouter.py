@@ -29,30 +29,41 @@ class OpenRouterClient(BaseLLMClient):
         }
         self._fallback_embedding_client = embedding_client or OllamaClient(**kwargs)
 
-    async def chat(self, messages: List[Dict[str, str]]) -> Tuple[str, Dict[str, Any]]:
+    async def chat(
+        self, 
+        messages: List[Dict[str, Any]], 
+        tools: List[Dict[str, Any]] | None = None
+    ) -> Tuple[str, Dict[str, Any]]:
         start_time = time.time()
-        payload = {
+        payload: Dict[str, Any] = {
             "model": self.model,
             "messages": messages
         }
 
-        async with httpx.AsyncClient() as client:
-            response = await client.post(self.base_url, headers=self.headers, json=payload, timeout=60.0)
-            response.raise_for_status()
-            data = response.json()
+        if tools:
+            payload["tools"] = tools
 
-        elapsed_sec = round(time.time() - start_time, 4)
-        content = data["choices"][0]["message"]["content"]
-        usage = data.get("usage", {})
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(self.base_url, headers=self.headers, json=payload, timeout=60.0)
+                response.raise_for_status()
+                data = response.json()
 
-        metrics = {
-            "input_tokens": usage.get("prompt_tokens", 0),
-            "output_tokens": usage.get("completion_tokens", 0),
-            "total_duration": elapsed_sec,
-            "provider": "openrouter"
-        }
+            elapsed_sec = round(time.time() - start_time, 2)
+            content = data["choices"][0]["message"]["content"] if data.get("choices") else ""
+            usage = data.get("usage", {})
 
-        return content, metrics
+            metrics = {
+                "input_tokens": usage.get("prompt_tokens", 0),
+                "output_tokens": usage.get("completion_tokens", 0),
+                "total_duration_sec": elapsed_sec,
+                "provider": "openrouter"
+            }
+
+            return content, metrics
+        except Exception as e:
+            print(f"❌ [OpenRouter API Error]: {str(e)}")
+            return "{}", {}
 
     def get_embeddings(self, text: str) -> List[float]:
         return self._fallback_embedding_client.get_embeddings(text)

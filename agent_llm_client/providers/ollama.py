@@ -36,9 +36,10 @@ class OllamaClient(BaseLLMClient):
         target_model = model_name or self.model
         installed = self.get_installed_models()
 
-        # Match exact tag or implicit base model name
-        if any(m == target_model or m.startswith(f"{target_model}") for m in installed):
+        # Match exact tag or implicit base model tag prefix
+        if any(m == target_model or m.startswith(f"{target_model}:") for m in installed):
             return True
+
         print(f"\n⚠️  [Ollama Notice]: Model '{target_model}' is not installed locally.")
         confirm = input(f"👉 Would you like to pull '{target_model}' now? (y/N): ").strip().lower()
 
@@ -57,15 +58,22 @@ class OllamaClient(BaseLLMClient):
                 return False
         return False
     
-    async def chat(self, messages: List[Dict[str, Any]]) -> Tuple[str, Dict[str, Any]]:
+    async def chat(
+        self, 
+        messages: List[Dict[str, Any]], 
+        tools: List[Dict[str, Any]] | None = None
+    ) -> Tuple[str, Dict[str, Any]]:
         url = f"{self.host}/api/chat"
         payload = {
             "model": self.model,
             "messages": messages,
             "stream": False,
-            "format" : "json",
+            "format": "json",
             "option": {"temperature": 0.0, "num_predict": 4096}
         }
+
+        if tools:
+            payload["tools"] = tools
 
         data = json.dumps(payload).encode("utf-8")
         req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
@@ -78,7 +86,7 @@ class OllamaClient(BaseLLMClient):
 
             metrics = {
                 "input_tokens": res_json.get("prompt_eval_count", 0),
-                "output_token": res_json.get("eval_count", 0),
+                "output_tokens": res_json.get("eval_count", 0),
                 "total_duration_sec": round(res_json.get("total_duration", 0) / 1e9, 2),
                 "provider": "ollama"
             }

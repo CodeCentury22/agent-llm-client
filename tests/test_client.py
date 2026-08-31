@@ -7,7 +7,11 @@ from agent_llm_client.providers.gemini import GeminiClient
 from agent_llm_client.providers.claude import ClaudeClient
 from agent_llm_client.providers.openrouter import OpenRouterClient
 
-def tet_factory_ollama_instantiation():
+# ==========================================
+# 1. FACTORY & INSTANTIATION TESTS
+# ==========================================
+
+def test_factory_ollama_instantiation():
     client = create_llm_client("ollama")
     assert isinstance(client, OllamaClient)
 
@@ -26,18 +30,20 @@ def test_gemini_with_api_key_instantiates():
 @pytest.mark.asyncio
 @patch("urllib.request.urlopen")
 async def test_ollama_chat_success(mock_urlopen):
-    # Mock Ollama API response payload
     mock_response = MagicMock()
     mock_response.read.return_value = b'{"message": {"content": "{\\"tool_name\\": \\"list_files_tool\\", \\"arguments\\": {}}"}, "prompt_eval_count": 10, "eval_count": 5, "total_duration": 1000000000}'
     mock_urlopen.return_value = mock_response
 
     client = OllamaClient()
     messages = [{"role": "user", "content": "List files"}]
-    response_text, metrics = await client.chat(messages=messages)
+    tools = [{"type": "function", "function": {"name": "list_files"}}]
+    
+    response_text, metrics = await client.chat(messages=messages, tools=tools)
 
     assert "list_files_tool" in response_text
     assert metrics["provider"] == "ollama"
     assert metrics["input_tokens"] == 10
+    assert metrics["output_tokens"] == 5
     assert metrics["total_duration_sec"] == 1.0
 
 @patch("urllib.request.urlopen")
@@ -58,7 +64,6 @@ def test_ollama_get_embeddings_success(mock_urlopen):
 @pytest.mark.asyncio
 @patch("google.genai.Client")
 async def test_gemini_chat_success(mock_genai_client):
-    # Mock Gemini SDK client response
     mock_response = MagicMock()
     mock_response.text = '{"tool_name": "DONE", "arguments": {}}'
     mock_response.usage_metadata.prompt_token_count = 15
@@ -70,7 +75,9 @@ async def test_gemini_chat_success(mock_genai_client):
 
     client = GeminiClient(api_key="test_key")
     messages = [{"role": "user", "content": "Complete task"}]
-    response_text, metrics = await client.chat(messages)
+    tools = [{"type": "function", "function": {"name": "done"}}]
+    
+    response_text, metrics = await client.chat(messages=messages, tools=tools)
 
     assert "DONE" in response_text
     assert metrics["provider"] == "gemini"
@@ -94,7 +101,6 @@ def test_gemini_get_embeddings_success(mock_genai_client):
 
     assert embeddings == [0.5, 0.6, 0.7]
 
-
 # ==========================================
 # 4. CLAUDE PROVIDER TESTS
 # ==========================================
@@ -114,7 +120,9 @@ async def test_claude_chat_success(mock_post):
 
     client = ClaudeClient(api_key="test_anthropic_key")
     messages = [{"role": "user", "content": "Hi"}]
-    response_text, metrics = await client.chat(messages)
+    tools = [{"type": "function", "function": {"name": "test_tool", "description": "test", "parameters": {}}}]
+    
+    response_text, metrics = await client.chat(messages=messages, tools=tools)
 
     assert response_text == "Hello from Claude!"
     assert metrics["provider"] == "claude"
@@ -152,7 +160,9 @@ async def test_openrouter_chat_success(mock_post):
 
     client = OpenRouterClient(api_key="test_openrouter_key")
     messages = [{"role": "user", "content": "Hello"}]
-    response_text, metrics = await client.chat(messages)
+    tools = [{"type": "function", "function": {"name": "test_tool"}}]
+    
+    response_text, metrics = await client.chat(messages=messages, tools=tools)
 
     assert response_text == "Hello from OpenRouter!"
     assert metrics["provider"] == "openrouter"
@@ -170,11 +180,13 @@ def test_openrouter_get_embeddings(mock_ollama_cls):
 
     assert embeddings == [0.4, 0.5, 0.6]
 
+# ==========================================
+# 6. OLLAMA MODEL MANAGEMENT TESTS
+# ==========================================
 
 @pytest.fixture
 def client():
     return OllamaClient(model="qwen2.5-coder:32b-instruct")
-
 
 def test_get_installed_models_success(client):
     mock_response = MagicMock()
@@ -185,21 +197,16 @@ def test_get_installed_models_success(client):
         models = client.get_installed_models()
         assert models == ["llama3.3:70b", "deepseek-r1:32b"]
 
-
 def test_get_installed_models_failure(client):
     with patch("urllib.request.urlopen", side_effect=Exception("Connection refused")):
         models = client.get_installed_models()
         assert models == []
-
 
 @pytest.mark.asyncio
 async def test_ensure_model_available_already_installed(client):
     with patch.object(client, "get_installed_models", return_value=["qwen2.5-coder:32b-instruct"]):
         result = await client.ensure_model_available()
         assert result is True
-
-
-from unittest.mock import patch, AsyncMock
 
 @pytest.mark.asyncio
 async def test_ensure_model_available_pull_success(client):
@@ -218,7 +225,6 @@ async def test_ensure_model_available_pull_success(client):
             timeout=900.0,
             bypass_hitl=True
         )
-
 
 @pytest.mark.asyncio
 async def test_ensure_model_available_pull_declined(client):

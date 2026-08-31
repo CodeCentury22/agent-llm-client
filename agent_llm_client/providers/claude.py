@@ -28,7 +28,11 @@ class ClaudeClient(BaseLLMClient):
         # Fallback to local Ollama for embeddings since Anthropic has no native embedding API
         self._embedding_fallback = embedding_client or OllamaClient(**kwargs)
 
-    async def chat(self, messages: List[Dict[str, str]]) -> Tuple[str, Dict[str, Any]]:
+    async def chat(
+        self, 
+        messages: List[Dict[str, Any]], 
+        tools: List[Dict[str, Any]] | None = None
+    ) -> Tuple[str, Dict[str, Any]]:
         start_time = time.time()
 
         system_prompt = None
@@ -48,23 +52,41 @@ class ClaudeClient(BaseLLMClient):
         if system_prompt:
             payload["system"] = system_prompt
 
-        async with httpx.AsyncClient() as client:
-            response = await client.post(self.base_url, headers=self.headers, json=payload, timeout=60.0)
-            response.raise_for_status()
-            data = response.json()
+        if tools:
+            formatted_tools = []
+            for tool in tools:
+                if "function" in tool:
+                    func = tool["function"]
+                    formatted_tools.append({
+                        "name": func.get("name"),
+                        "description": func.get("description", ""),
+                        "input_schema": func.get("parameters", {})
+                    })
+                else:
+                    formatted_tools.append(tool)
+            payload["tools"] = formatted_tools
 
-        content = data["content"][0]["text"] if data.get("content") else ""
-        usage = data.get("usage", {})
-        latency = round(time.time() - start_time, 4)
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(self.base_url, headers=self.headers, json=payload, timeout=60.0)
+                response.raise_for_status()
+                data = response.json()
 
-        metrics = {
-            "input_tokens": usage.get("input_tokens", 0),
-            "output_tokens": usage.get("output_tokens", 0),  # Standardized key
-            "total_duration": latency,
-            "provider": "claude"
-        }
+            content = data["content"][0]["text"] if data.get("content") else ""
+            usage = data.get("usage", {})
+            latency = round(time.time() - start_time, 2)
 
-        return content, metrics
+            metrics = {
+                "input_tokens": usage.get("input_tokens", 0),
+                "output_tokens": usage.get("output_tokens", 0),
+                "total_duration_sec": latency,
+                "provider": "claude"
+            }
+
+            return content, metrics
+        except Exception as e:
+            print(f"❌ [Claude API Error]: {str(e)}")
+            return "{}", {}
 
     def get_embeddings(self, text: str) -> List[float]:
         return self._embedding_fallback.get_embeddings(text)
