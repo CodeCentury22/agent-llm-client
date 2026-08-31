@@ -4,13 +4,17 @@ build-backend = "hatchling.build"
 
 [project]
 name = "agent-llm-client"
-version = "0.3.0"
+version = "0.4.0"
 description = "Unified client interface supporting local (Ollama) and cloud (Gemini) LLM completion and embeddings."
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "google-genai>=0.1.0",
+    "agent-async-runner"
 ]
+
+[tool.uv.sources]
+agent-async-runner  = { git = "https://github.com/CodeCentury22/agent-async-runner.git", tag = "v0.4.0" }
 
 [dependency-groups]
 dev = [

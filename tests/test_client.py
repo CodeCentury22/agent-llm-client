@@ -3,7 +3,7 @@ import httpx
 from unittest.mock import patch, MagicMock, AsyncMock
 from agent_llm_client import create_llm_client
 from agent_llm_client.providers.ollama import OllamaClient
-from agent_llm_client.providers.gemini import GemeniClient
+from agent_llm_client.providers.gemini import GeminiClient
 from agent_llm_client.providers.claude import ClaudeClient
 from agent_llm_client.providers.openrouter import OpenRouterClient
 
@@ -17,7 +17,7 @@ def test_gemini_api_key_raises_value_error():
 
 def test_gemini_with_api_key_instantiates():
     client = create_llm_client("gemini", api_key="dummy_key_for_test")
-    assert isinstance(client, GemeniClient)
+    assert isinstance(client, GeminiClient)
 
 # ==========================================
 # 2. OLLAMA LOCAL PROVIDER TESTS
@@ -68,7 +68,7 @@ async def test_gemini_chat_success(mock_genai_client):
     mock_instance.models.generate_content.return_value = mock_response
     mock_genai_client.return_value = mock_instance
 
-    client = GemeniClient(api_key="test_key")
+    client = GeminiClient(api_key="test_key")
     messages = [{"role": "user", "content": "Complete task"}]
     response_text, metrics = await client.chat(messages)
 
@@ -89,7 +89,7 @@ def test_gemini_get_embeddings_success(mock_genai_client):
     mock_instance.models.embed_content.return_value = mock_response
     mock_genai_client.return_value = mock_instance
 
-    client = GemeniClient(api_key="test_key")
+    client = GeminiClient(api_key="test_key")
     embeddings = client.get_embeddings("sample code text")
 
     assert embeddings == [0.5, 0.6, 0.7]
@@ -169,3 +169,61 @@ def test_openrouter_get_embeddings(mock_ollama_cls):
     embeddings = client.get_embeddings("Sample text")
 
     assert embeddings == [0.4, 0.5, 0.6]
+
+
+@pytest.fixture
+def client():
+    return OllamaClient(model="qwen2.5-coder:32b-instruct")
+
+
+def test_get_installed_models_success(client):
+    mock_response = MagicMock()
+    mock_response.status = 200
+    mock_response.read.return_value = b'{"models": [{"name": "llama3.3:70b"}, {"name": "deepseek-r1:32b"}]}'
+
+    with patch("urllib.request.urlopen", return_value=mock_response):
+        models = client.get_installed_models()
+        assert models == ["llama3.3:70b", "deepseek-r1:32b"]
+
+
+def test_get_installed_models_failure(client):
+    with patch("urllib.request.urlopen", side_effect=Exception("Connection refused")):
+        models = client.get_installed_models()
+        assert models == []
+
+
+@pytest.mark.asyncio
+async def test_ensure_model_available_already_installed(client):
+    with patch.object(client, "get_installed_models", return_value=["qwen2.5-coder:32b-instruct"]):
+        result = await client.ensure_model_available()
+        assert result is True
+
+
+from unittest.mock import patch, AsyncMock
+
+@pytest.mark.asyncio
+async def test_ensure_model_available_pull_success(client):
+    with patch.object(client, "get_installed_models", return_value=[]), \
+         patch("builtins.input", return_value="y"), \
+         patch(
+             "agent_llm_client.providers.ollama.execute_async_subprocess",
+             new_callable=AsyncMock,
+             return_value={"status": "SUCCESS"}
+         ) as mock_exec:
+        
+        result = await client.ensure_model_available("deepseek-r1:32b")
+        assert result is True
+        mock_exec.assert_called_once_with(
+            "ollama pull deepseek-r1:32b",
+            timeout=900.0,
+            bypass_hitl=True
+        )
+
+
+@pytest.mark.asyncio
+async def test_ensure_model_available_pull_declined(client):
+    with patch.object(client, "get_installed_models", return_value=[]), \
+         patch("builtins.input", return_value="n"):
+        
+        result = await client.ensure_model_available("deepseek-r1:32b")
+        assert result is False

@@ -5,7 +5,7 @@ import asyncio
 from typing import List, Dict, Any, Tuple
 from ..base import BaseLLMClient
 
-class GemeniClient(BaseLLMClient):
+class GeminiClient(BaseLLMClient):
 
     def __init__(
             self,

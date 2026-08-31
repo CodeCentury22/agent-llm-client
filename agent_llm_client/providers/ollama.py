@@ -4,6 +4,7 @@ import urllib.request
 import asyncio
 from typing import List, Dict, Any, Tuple
 from ..base import BaseLLMClient
+from agent_async_runner import execute_async_subprocess
 
 class OllamaClient(BaseLLMClient):
 
@@ -17,6 +18,45 @@ class OllamaClient(BaseLLMClient):
         self.embed_model = embed_model
         self.host = host
 
+    def get_installed_models(self) -> List[str]:
+        """Queries local Ollama instance for currently installed models."""
+        url = f"{self.host}/api/tags"
+        req = urllib.request.Request(url)
+        try:
+            response = urllib.request.urlopen(req, timeout=2)
+            if response.status == 200:
+                res_json = json.loads(response.read().decode("utf-8"))
+                return [m["name"] for m in res_json.get("models", [])]
+        except Exception:
+            pass
+        return []
+
+    async def ensure_model_available(self, model_name: str | None = None) -> bool:
+        """Verifies if a model exists locally, prompting an async pull if missing."""
+        target_model = model_name or self.model
+        installed = self.get_installed_models()
+
+        # Match exact tag or implicit base model name
+        if any(m == target_model or m.startswith(f"{target_model}") for m in installed):
+            return True
+        print(f"\n⚠️  [Ollama Notice]: Model '{target_model}' is not installed locally.")
+        confirm = input(f"👉 Would you like to pull '{target_model}' now? (y/N): ").strip().lower()
+
+        if confirm == "y":
+            print(f"📥 [Downloading Model]: Executing 'ollama pull {target_model}'...")
+            res = await execute_async_subprocess(
+                f"ollama pull {target_model}",
+                timeout=900.0,
+                bypass_hitl=True
+            )
+            if res.get("status") == "SUCCESS":
+                print(f"✅ Successfully downloaded '{target_model}'.")
+                return True
+            else:
+                print(f"❌ Failed to download model: {res.get('stderr')}")
+                return False
+        return False
+    
     async def chat(self, messages: List[Dict[str, Any]]) -> Tuple[str, Dict[str, Any]]:
         url = f"{self.host}/api/chat"
         payload = {
