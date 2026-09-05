@@ -14,7 +14,7 @@ Unified LLM provider abstraction layer and vector embedding generation for local
 Add directly to any `uv`-managed project:
 
 ```bash
-uv add git+https://github.com/CodeCentury22/agent-llm-client.git@v0.4.1
+uv add git+https://github.com/CodeCentury22/agent-llm-client.git@v0.4.2
 ```
 
 ## Quick Start
