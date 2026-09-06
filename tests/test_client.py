@@ -1,5 +1,7 @@
 import pytest
 import httpx
+import urllib.error
+from io import BytesIO
 from unittest.mock import patch, MagicMock, AsyncMock
 from agent_llm_client import create_llm_client
 from agent_llm_client.providers.ollama import OllamaClient
@@ -50,12 +52,41 @@ async def test_ollama_chat_success(mock_urlopen):
 def test_ollama_get_embeddings_success(mock_urlopen):
     mock_response = MagicMock()
     mock_response.read.return_value = b'{"embedding": [0.1, 0.2, 0.3]}'
-    mock_urlopen.return_value = mock_response
+    # Enable context manager behavior (__enter__) for with-blocks
+    mock_urlopen.return_value.__enter__.return_value = mock_response
 
     client = OllamaClient()
     embeddings = client.get_embeddings("sample code text")
 
     assert embeddings == [0.1, 0.2, 0.3]
+
+@patch("urllib.request.urlopen")
+def test_ollama_get_embeddings_http_error(mock_urlopen):
+    """Verify HTTPError (e.g. HTTP 500) is caught and handled gracefully returning []"""
+    error_body = BytesIO(b'{"error": "model \'nomic-embed-text\' not found"}')
+    http_error = urllib.error.HTTPError(
+        url="http://localhost:11434/api/embeddings",
+        code=500,
+        msg="Internal Server Error",
+        hdrs={},
+        fp=error_body
+    )
+    mock_urlopen.side_effect = http_error
+
+    client = OllamaClient()
+    embeddings = client.get_embeddings("sample code text")
+
+    assert embeddings == []
+
+@patch("urllib.request.urlopen")
+def test_ollama_get_embeddings_generic_exception(mock_urlopen):
+    """Verify generic connection exceptions return an empty embedding list."""
+    mock_urlopen.side_effect = Exception("Connection refused")
+
+    client = OllamaClient()
+    embeddings = client.get_embeddings("sample code text")
+
+    assert embeddings == []
 
 # ==========================================
 # 3. GEMINI CLOUD PROVIDER TESTS
@@ -233,3 +264,4 @@ async def test_ensure_model_available_pull_declined(client):
         
         result = await client.ensure_model_available("deepseek-r1:32b")
         assert result is False
+

@@ -5,6 +5,7 @@ import asyncio
 from typing import List, Dict, Any, Tuple
 from ..base import BaseLLMClient
 from agent_async_runner import execute_async_subprocess
+import urllib.error
 
 class OllamaClient(BaseLLMClient):
 
@@ -98,15 +99,40 @@ class OllamaClient(BaseLLMClient):
             print(f"❌ [Ollama Error]: {str(e)}")
             return "{}", {}
 
-    def get_embeddings(self, text) -> List[float]:
-        url = f"{self.host}/api/embeddings"
+
+    def get_embeddings(self, text: str) -> List[float]:
+        # Strip trailing slashes from host to prevent double slashes
+        host = self.host.rstrip("/")
+        url = f"{host}/api/embeddings"
+        
         payload = {"model": self.embed_model, "prompt": text}
         data = json.dumps(payload).encode("utf-8")
-        req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
+        
+        req = urllib.request.Request(
+            url, 
+            data=data, 
+            headers={"Content-Type": "application/json"}
+        )
+        
         try:
-            response = urllib.request.urlopen(req)
-            res_json = json.loads(response.read().decode("utf-8"))
-            return res_json.get("embedding", [])
+            # Added explicit timeout to prevent infinite blocking if Ollama stalls
+            with urllib.request.urlopen(req, timeout=30.0) as response:
+                res_json = json.loads(response.read().decode("utf-8"))
+                return res_json.get("embedding", [])
+                
+        except urllib.error.HTTPError as e:
+            try:
+                error_json = json.loads(e.read().decode("utf-8"))
+                error_msg = error_json.get("error", e.reason)
+                print(f"❌ [Ollama Embedding Error {e.code}]: {error_msg}")
+            except Exception:
+                print(f"❌ [Ollama Embedding Error {e.code}]: {e.reason}")
+            return []
+            
+        except urllib.error.URLError as e:
+            print(f"❌ [Ollama Connection Error]: Could not reach host '{self.host}': {e.reason}")
+            return []
+            
         except Exception as e:
             print(f"❌ [Ollama Embedding Error]: {str(e)}")
             return []
