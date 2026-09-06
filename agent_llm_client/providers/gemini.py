@@ -10,7 +10,7 @@ class GeminiClient(BaseLLMClient):
     def __init__(
             self,
             api_key: str | None = None,
-            model: str = "gemini-1.5-pro",
+            model: str = "gemini-2.5-flash",
             embed_model: str = "text-embedding-004"
     ):
         from google import genai
@@ -51,12 +51,14 @@ class GeminiClient(BaseLLMClient):
         config = types.GenerateContentConfig(
             system_instruction=system_instruction,
             temperature=0.0,
-            response_mime_type="application/json"
+            # Disable SDK-side automatic execution of function callables to suppress the SDK AFC warning
+            automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True)
         )
 
         for attempt in range(5):
             try:
-                response = self.client.models.generate_content(
+                # Use async client variant (.aio) to avoid blocking the event loop
+                response = await self.client.aio.models.generate_content(
                     model=self.model,
                     contents=contents,
                     config=config

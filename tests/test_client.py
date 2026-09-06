@@ -101,7 +101,8 @@ async def test_gemini_chat_success(mock_genai_client):
     mock_response.usage_metadata.candidates_token_count = 8
 
     mock_instance = MagicMock()
-    mock_instance.models.generate_content.return_value = mock_response
+    # Mock self.client.aio.models.generate_content as an AsyncMock
+    mock_instance.aio.models.generate_content = AsyncMock(return_value=mock_response)
     mock_genai_client.return_value = mock_instance
 
     client = GeminiClient(api_key="test_key")
@@ -114,6 +115,7 @@ async def test_gemini_chat_success(mock_genai_client):
     assert metrics["provider"] == "gemini"
     assert metrics["input_tokens"] == 15
     assert metrics["output_tokens"] == 8
+    mock_instance.aio.models.generate_content.assert_called_once()
 
 @patch("google.genai.Client")
 def test_gemini_get_embeddings_success(mock_genai_client):
@@ -264,4 +266,3 @@ async def test_ensure_model_available_pull_declined(client):
         
         result = await client.ensure_model_available("deepseek-r1:32b")
         assert result is False
-
