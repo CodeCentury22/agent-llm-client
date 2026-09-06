@@ -4,6 +4,8 @@ import re
 import asyncio
 from typing import List, Dict, Any, Tuple
 from ..base import BaseLLMClient
+from .ollama import OllamaClient
+
 
 class GeminiClient(BaseLLMClient):
 
@@ -11,7 +13,8 @@ class GeminiClient(BaseLLMClient):
             self,
             api_key: str | None = None,
             model: str = "gemini-2.5-flash",
-            embed_model: str = "text-embedding-004"
+            embedding_client: BaseLLMClient | None = None,
+            **kwargs
     ):
         from google import genai
 
@@ -24,7 +27,7 @@ class GeminiClient(BaseLLMClient):
             )
         self.client = genai.Client(api_key=self.api_key)
         self.model = model
-        self.embed_model = embed_model
+        self._embedding_fallback = embedding_client or OllamaClient(**kwargs)
 
     async def chat(
         self, 
@@ -89,14 +92,4 @@ class GeminiClient(BaseLLMClient):
         return "{}", {}
 
     def get_embeddings(self, text: str) -> List[float]:
-        try:
-            res = self.client.models.embed_content(
-                model=self.embed_model,
-                contents=text
-            )
-            if hasattr(res, "embeddings") and res.embeddings:
-                return res.embeddings[0].values
-            return []
-        except Exception as e:
-            print(f"❌ [Gemini Embedding Error]: {str(e)}")
-            return []
+            return self._embedding_fallback.get_embeddings(text)

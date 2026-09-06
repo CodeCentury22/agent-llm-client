@@ -21,7 +21,9 @@ def test_gemini_api_key_raises_value_error():
     with pytest.raises(ValueError, match="API key is required"):
         create_llm_client("gemini", api_key=None)
 
-def test_gemini_with_api_key_instantiates():
+@patch("google.genai.Client")
+@patch("agent_llm_client.providers.gemini.OllamaClient")
+def test_gemini_with_api_key_instantiates(mock_ollama, mock_genai):
     client = create_llm_client("gemini", api_key="dummy_key_for_test")
     assert isinstance(client, GeminiClient)
 
@@ -94,7 +96,8 @@ def test_ollama_get_embeddings_generic_exception(mock_urlopen):
 
 @pytest.mark.asyncio
 @patch("google.genai.Client")
-async def test_gemini_chat_success(mock_genai_client):
+@patch("agent_llm_client.providers.gemini.OllamaClient")
+async def test_gemini_chat_success(mock_ollama, mock_genai_client):
     mock_response = MagicMock()
     mock_response.text = '{"tool_name": "DONE", "arguments": {}}'
     mock_response.usage_metadata.prompt_token_count = 15
@@ -118,21 +121,15 @@ async def test_gemini_chat_success(mock_genai_client):
     mock_instance.aio.models.generate_content.assert_called_once()
 
 @patch("google.genai.Client")
-def test_gemini_get_embeddings_success(mock_genai_client):
-    mock_embedding = MagicMock()
-    mock_embedding.values = [0.5, 0.6, 0.7]
+def test_gemini_get_embeddings_fallback(mock_genai_client):
+    mock_embedding_client = MagicMock()
+    mock_embedding_client.get_embeddings.return_value = [0.5, 0.6, 0.7]
 
-    mock_response = MagicMock()
-    mock_response.embeddings = [mock_embedding]
-
-    mock_instance = MagicMock()
-    mock_instance.models.embed_content.return_value = mock_response
-    mock_genai_client.return_value = mock_instance
-
-    client = GeminiClient(api_key="test_key")
+    client = GeminiClient(api_key="test_key", embedding_client=mock_embedding_client)
     embeddings = client.get_embeddings("sample code text")
 
     assert embeddings == [0.5, 0.6, 0.7]
+    mock_embedding_client.get_embeddings.assert_called_once_with("sample code text")
 
 # ==========================================
 # 4. CLAUDE PROVIDER TESTS
