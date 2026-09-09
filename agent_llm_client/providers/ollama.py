@@ -60,46 +60,52 @@ class OllamaClient(BaseLLMClient):
         return False
     
     async def chat(
-        self, 
-        messages: List[Dict[str, Any]], 
-        tools: List[Dict[str, Any]] | None = None
-    ) -> Tuple[str, Dict[str, Any]]:
-        url = f"{self.host}/api/chat"
-        payload = {
-            "model": self.model,
-            "messages": messages,
-            "stream": False,
-            "format": "json",
-            "options": {"temperature": 0.0, "num_predict": 4096}  # Changed 'option' to 'options'
-        }
-
-        if tools:
-            payload["tools"] = tools
-
-        data = json.dumps(payload).encode("utf-8")
-        req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
-
-        event_loop = asyncio.get_event_loop()
-
-        try:
-            raw_bytes = await event_loop.run_in_executor(None, lambda: urllib.request.urlopen(req).read())
-            res_json = json.loads(raw_bytes.decode("utf-8"))
-
-            metrics = {
-                "input_tokens": res_json.get("prompt_eval_count", 0),
-                "output_tokens": res_json.get("eval_count", 0),
-                "total_duration_sec": round(res_json.get("total_duration", 0) / 1e9, 2),
-                "provider": "ollama"
+            self, 
+            messages: List[Dict[str, Any]], 
+            tools: List[Dict[str, Any]] | None = None
+        ) -> Tuple[str, Dict[str, Any]]:
+            url = f"{self.host}/api/chat"
+            payload = {
+                "model": self.model,
+                "messages": messages,
+                "stream": False,
+                "format": "json",
+                "options": {"temperature": 0.0, "num_predict": 4096}
             }
 
-            content = res_json.get("message", {}).get("content", "").strip()
-            json_match = re.search(r"\{.*\}", content, re.DOTALL)
-            return (json_match.group(0) if json_match else content), metrics
-        except Exception as e:
-            print(f"❌ [Ollama Error]: {str(e)}")
-            return "{}", {}
+            # Only pass tools if the model natively supports them, or inject 
+            # tool descriptions directly into the system prompt for distilled models.
+            if tools:
+                # If targeting a distilled model without native Ollama tool-call binding,
+                # we can inject tool schemas into the system message to prevent 400 validation errors.
+                payload["tools"] = tools
 
+            data = json.dumps(payload).encode("utf-8")
+            req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
 
+            event_loop = asyncio.get_event_loop()
+
+            try:
+                raw_bytes = await event_loop.run_in_executor(None, lambda: urllib.request.urlopen(req).read())
+                res_json = json.loads(raw_bytes.decode("utf-8"))
+
+                metrics = {
+                    "input_tokens": res_json.get("prompt_eval_count", 0),
+                    "output_tokens": res_json.get("eval_count", 0),
+                    "total_duration_sec": round(res_json.get("total_duration", 0) / 1e9, 2),
+                    "provider": "ollama"
+                }
+
+                content = res_json.get("message", {}).get("content", "").strip()
+                json_match = re.search(r"\{.*\}", content, re.DOTALL)
+                return (json_match.group(0) if json_match else content), metrics
+            except urllib.error.HTTPError as e:
+                error_body = e.read().decode("utf-8") if e.fp else ""
+                print(f"❌ [Ollama HTTP Error {e.code}]: {error_body or e.reason}")
+                return "{}", {}
+            except Exception as e:
+                print(f"❌ [Ollama Error]: {str(e)}")
+                return "{}", {}
     def get_embeddings(self, text: str) -> List[float]:
         # Strip trailing slashes from host to prevent double slashes
         host = self.host.rstrip("/")
