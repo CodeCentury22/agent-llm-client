@@ -69,7 +69,8 @@ class OllamaClient(BaseLLMClient):
             "model": self.model,
             "messages": messages,
             "stream": False,
-            "options": {"temperature": 0.0, "num_predict": 4096}
+            "format": "json",
+            "option": {"temperature": 0.0, "num_predict": 4096}
         }
 
         if tools:
@@ -98,7 +99,7 @@ class OllamaClient(BaseLLMClient):
             print(f"❌ [Ollama Error]: {str(e)}")
             return "{}", {}
 
-             
+
     def get_embeddings(self, text: str) -> List[float]:
         # Strip trailing slashes from host to prevent double slashes
         host = self.host.rstrip("/")
