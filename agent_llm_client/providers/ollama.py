@@ -70,7 +70,7 @@ class OllamaClient(BaseLLMClient):
             "messages": messages,
             "stream": False,
             "format": "json",
-            "option": {"temperature": 0.0, "num_predict": 4096}
+            "options": {"temperature": 0.0, "num_predict": 4096}  # Changed 'option' to 'options'
         }
 
         if tools:
