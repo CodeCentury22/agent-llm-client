@@ -91,7 +91,7 @@ class OllamaClient(BaseLLMClient):
                         # Extract content delta from /api/chat structure
                         delta = chunk.get("message", {}).get("content", "")
                         full_content += delta
-                        
+                        print(f" [Ollama Chunck]: {delta}")
                         if chunk.get("done", False):
                             metrics = {
                                 "input_tokens": chunk.get("prompt_eval_count", 0),
