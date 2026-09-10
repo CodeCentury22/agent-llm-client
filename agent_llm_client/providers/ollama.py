@@ -68,13 +68,13 @@ class OllamaClient(BaseLLMClient):
         payload = {
             "model": self.model,
             "messages": messages,
-            "stream": True,  # Keep streaming enabled
+            "stream": True,
             "format": "json",
             "options": {"temperature": 0.0, "num_predict": 4096}
         }
 
-        if tools:
-            payload["tools"] = tools
+        # Do NOT pass payload["tools"] here because our custom Modelfile 
+        # template already handles tool schema formatting in the prompt.
 
         data = json.dumps(payload).encode("utf-8")
         req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
@@ -88,10 +88,15 @@ class OllamaClient(BaseLLMClient):
                 for line in response:
                     if line:
                         chunk = json.loads(line.decode("utf-8"))
-                        # Extract content delta from /api/chat structure
-                        delta = chunk.get("message", {}).get("content", "")
+                        msg = chunk.get("message", {})
+                        
+                        # Handle both direct text content and structured tool_calls
+                        delta = msg.get("content", "")
+                        if not delta and "tool_calls" in msg:
+                            delta = json.dumps(msg["tool_calls"])
+                            
                         full_content += delta
-                        print(f" [Ollama Chunck]: {delta}")
+                        
                         if chunk.get("done", False):
                             metrics = {
                                 "input_tokens": chunk.get("prompt_eval_count", 0),
@@ -109,7 +114,7 @@ class OllamaClient(BaseLLMClient):
             print(f"❌ [Ollama Error]: {str(e)}")
             return "{}", {}
 
-        
+
     def get_embeddings(self, text: str) -> List[float]:
         # Strip trailing slashes from host to prevent double slashes
         host = self.host.rstrip("/")
