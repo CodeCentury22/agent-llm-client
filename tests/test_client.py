@@ -34,14 +34,24 @@ def test_gemini_with_api_key_instantiates(mock_ollama, mock_genai):
 @pytest.mark.asyncio
 @patch("urllib.request.urlopen")
 async def test_ollama_chat_success(mock_urlopen):
+    # Prepare line-delimited JSON chunks matching the streaming format
+    chunk = (
+        b'{"message": {"content": "{\\"tool_name\\": \\"list_files_tool\\",'
+        b' \\"arguments\\": {}}"}, "done": true, "prompt_eval_count": 10,'
+        b' "eval_count": 5, "total_duration": 1000000000}\n'
+    )
+
     mock_response = MagicMock()
-    mock_response.read.return_value = b'{"message": {"content": "{\\"tool_name\\": \\"list_files_tool\\", \\"arguments\\": {}}"}, "prompt_eval_count": 10, "eval_count": 5, "total_duration": 1000000000}'
-    mock_urlopen.return_value = mock_response
+    # Enable line-by-line streaming iteration
+    mock_response.__iter__.return_value = [chunk]
+
+    # Support context manager usage (with urllib.request.urlopen(...) as response:)
+    mock_urlopen.return_value.__enter__.return_value = mock_response
 
     client = OllamaClient()
     messages = [{"role": "user", "content": "List files"}]
     tools = [{"type": "function", "function": {"name": "list_files"}}]
-    
+
     response_text, metrics = await client.chat(messages=messages, tools=tools)
 
     assert "list_files_tool" in response_text

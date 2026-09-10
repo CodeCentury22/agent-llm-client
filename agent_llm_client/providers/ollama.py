@@ -68,9 +68,9 @@ class OllamaClient(BaseLLMClient):
         payload = {
             "model": self.model,
             "messages": messages,
-            "stream": False,
+            "stream": True,  # Keep streaming enabled
             "format": "json",
-            "option": {"temperature": 0.0, "num_predict": 4096}
+            "options": {"temperature": 0.0, "num_predict": 4096}
         }
 
         if tools:
@@ -81,25 +81,35 @@ class OllamaClient(BaseLLMClient):
 
         event_loop = asyncio.get_event_loop()
 
+        def _stream_chat():
+            full_content = ""
+            metrics = {}
+            with urllib.request.urlopen(req) as response:
+                for line in response:
+                    if line:
+                        chunk = json.loads(line.decode("utf-8"))
+                        # Extract content delta from /api/chat structure
+                        delta = chunk.get("message", {}).get("content", "")
+                        full_content += delta
+                        
+                        if chunk.get("done", False):
+                            metrics = {
+                                "input_tokens": chunk.get("prompt_eval_count", 0),
+                                "output_tokens": chunk.get("eval_count", 0),
+                                "total_duration_sec": round(chunk.get("total_duration", 0) / 1e9, 2),
+                                "provider": "ollama"
+                            }
+            return full_content, metrics
+
         try:
-            raw_bytes = await event_loop.run_in_executor(None, lambda: urllib.request.urlopen(req).read())
-            res_json = json.loads(raw_bytes.decode("utf-8"))
-
-            metrics = {
-                "input_tokens": res_json.get("prompt_eval_count", 0),
-                "output_tokens": res_json.get("eval_count", 0),
-                "total_duration_sec": round(res_json.get("total_duration", 0) / 1e9, 2),
-                "provider": "ollama"
-            }
-
-            content = res_json.get("message", {}).get("content", "").strip()
+            content, metrics = await event_loop.run_in_executor(None, _stream_chat)
             json_match = re.search(r"\{.*\}", content, re.DOTALL)
             return (json_match.group(0) if json_match else content), metrics
         except Exception as e:
             print(f"❌ [Ollama Error]: {str(e)}")
             return "{}", {}
 
-
+        
     def get_embeddings(self, text: str) -> List[float]:
         # Strip trailing slashes from host to prevent double slashes
         host = self.host.rstrip("/")
