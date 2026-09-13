@@ -4,7 +4,7 @@ import urllib.request
 import asyncio
 from typing import List, Dict, Any, Tuple
 from ..base import BaseLLMClient
-from agent_async_runner import execute_async_subprocess
+from agent_workspace_tools import execute_async_subprocess
 import urllib.error
 
 class OllamaClient(BaseLLMClient):
